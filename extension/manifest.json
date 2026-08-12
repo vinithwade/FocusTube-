@@ -1,0 +1,41 @@
+{
+  "manifest_version": 3,
+  "name": "FocusTube",
+  "version": "1.2.0",
+  "description": "Goal-first YouTube learning — find the right video, not the most viewed one",
+  "permissions": [
+    "storage",
+    "webNavigation",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://www.youtube.com/*",
+    "*://youtube.com/*",
+    "http://localhost:3000/*",
+    "https://*.onrender.com/*"
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; frame-src http://localhost:3000 http://127.0.0.1:3000 https://*.onrender.com https://www.youtube.com https://www.youtube-nocookie.com;"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://www.youtube.com/*", "*://youtube.com/*"],
+      "js": ["session-utils.js", "content.js"],
+      "css": ["styles/focus.css"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "FocusTube"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["goal.html", "channel.html", "watch.html", "styles/*.css"],
+      "matches": ["*://www.youtube.com/*", "*://youtube.com/*"]
+    }
+  ]
+}

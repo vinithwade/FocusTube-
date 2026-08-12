@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FocusTube — Channel</title>
+  <link rel="stylesheet" href="styles/goal.css" />
+</head>
+<body>
+  <div class="container wide">
+    <header class="channel-header">
+      <button id="back-btn" class="back-btn">← Back</button>
+      <div id="channel-info" class="channel-info hidden">
+        <img id="channel-avatar" class="channel-avatar" alt="" />
+        <div>
+          <h1 id="channel-name"></h1>
+          <p id="channel-meta" class="channel-meta"></p>
+        </div>
+      </div>
+    </header>
+
+    <div id="loading" class="loading">
+      <div class="spinner"></div>
+      <p>Loading channel videos...</p>
+    </div>
+
+    <div id="error" class="error hidden"></div>
+
+    <div id="video-grid" class="video-grid hidden"></div>
+  </div>
+
+  <script src="channel.js"></script>
+</body>
+</html>

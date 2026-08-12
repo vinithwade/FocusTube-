@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <style>
+    body {
+      width: 280px;
+      padding: 1rem;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f0f0f;
+      color: #f1f1f1;
+      margin: 0;
+    }
+    h2 {
+      font-size: 1.1rem;
+      color: #ff4444;
+      margin: 0 0 0.5rem;
+    }
+    p {
+      font-size: 0.85rem;
+      color: #aaa;
+      margin: 0 0 1rem;
+      line-height: 1.4;
+    }
+    button {
+      width: 100%;
+      padding: 0.6rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-bottom: 0.5rem;
+      font-family: inherit;
+    }
+    .primary { background: #ff4444; color: white; }
+    .secondary { background: #333; color: #ccc; }
+    .session-info {
+      background: #1a1a1a;
+      border-radius: 6px;
+      padding: 0.75rem;
+      margin-bottom: 1rem;
+      font-size: 0.8rem;
+    }
+    .session-info strong { color: #ff4444; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h2>FocusTube</h2>
+  <p>Goal-first YouTube learning</p>
+
+  <div id="session-info" class="session-info hidden">
+    <strong>Active session</strong>
+    <div id="session-goal"></div>
+  </div>
+
+  <button class="primary" id="new-goal">Set a learning goal</button>
+  <button class="secondary" id="skip-btn">Skip for 30 min</button>
+  <button class="secondary hidden" id="clear-skip">Re-enable FocusTube</button>
+  <button class="secondary hidden" id="end-session">End session</button>
+
+  <script src="popup.js"></script>
+</body>
+</html>

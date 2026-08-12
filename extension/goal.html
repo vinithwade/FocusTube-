@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FocusTube</title>
+  <link rel="stylesheet" href="styles/goal.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>FocusTube</h1>
+      <p class="subtitle">One clear goal. One right video.</p>
+    </header>
+
+    <form id="goal-form">
+      <div class="field">
+        <label for="query">What are you here to learn?</label>
+        <p class="hint">Type a channel name to browse it, or describe what you want to learn.</p>
+        <textarea
+          id="query"
+          name="query"
+          rows="4"
+          required
+          placeholder="e.g. Fireship — or learn React useEffect cleanup"
+        ></textarea>
+      </div>
+
+      <div class="actions">
+        <button type="submit" id="submit-btn">Find the best video</button>
+        <button type="button" id="skip-btn" class="secondary">Skip for 30 min</button>
+      </div>
+    </form>
+
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p id="loading-text">Building search queries...</p>
+    </div>
+
+    <div id="error" class="error hidden"></div>
+    <div id="results" class="results hidden"></div>
+  </div>
+
+  <script src="goal.js"></script>
+</body>
+</html>

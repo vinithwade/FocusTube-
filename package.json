@@ -1,0 +1,11 @@
+{
+  "name": "focustube",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Goal-first YouTube learning extension",
+  "scripts": {
+    "dev": "cd api && npm run dev",
+    "build": "cd api && npm run build",
+    "start": "cd api && npm start"
+  }
+}
