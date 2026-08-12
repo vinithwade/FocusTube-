@@ -66,6 +66,7 @@ function extractTopic(query: string): string {
     .replace(/^help\s+me\s+/i, "")
     .replace(/^show\s+me\s+(?:how\s+to\s+)?/i, "")
     .replace(/\s+(?:please|thanks|thank you)[.!]?$/i, "")
+    .replace(/\s+(?:video|videos)\s*$/i, "")
     .trim();
 }
 
@@ -108,24 +109,15 @@ function detectChannelIntent(query: string): string | null {
 
 function buildLearnQueries(topic: string, channelHint?: string): string[] {
   const queries: string[] = [];
-  const lower = topic.toLowerCase();
+
+  // Primary: user's exact words — YouTube handles typos and relevance best.
+  queries.push(topic);
 
   if (channelHint) {
     queries.push(`${channelHint} ${topic}`);
-    queries.push(`${topic} ${channelHint}`);
   }
 
-  queries.push(topic);
-
-  if (!lower.startsWith("how to") && !lower.startsWith("how do")) {
-    queries.push(`how to ${topic}`);
-  }
-
-  if (!/tutorial|course|guide|explained|walkthrough/i.test(topic)) {
-    queries.push(`${topic} tutorial explained`);
-  }
-
-  return unique(queries).slice(0, 5);
+  return unique(queries).slice(0, 2);
 }
 
 export function extractKeywords(text: string): string[] {

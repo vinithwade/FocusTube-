@@ -5,11 +5,8 @@ import type {
   VideoCandidate,
 } from "@shared/types";
 import { buildIntentText, extractKeywords } from "./intent";
-import { cosineSimilarity, embedText } from "./embeddings";
-import { channelNameMatches, formatDuration } from "./youtube";
-
-const MIN_SEMANTIC_SCORE = 0.28;
-const MIN_FINAL_SCORE = 35;
+import { cosineSimilarity, embedText, embedBatch } from "./embeddings";
+import { channelNameMatches } from "./youtube";
 
 const CLICKBAIT_PATTERNS = [
   /\byou won't believe\b/i,
@@ -19,19 +16,32 @@ const CLICKBAIT_PATTERNS = [
   /\bexposed\b/i,
   /\binsane\b/i,
   /\bcrazy\b/i,
-  /\bultimate guide\b/i,
-  /\beverything you need\b/i,
   /\bwatch this\b/i,
   /\bclick here\b/i,
 ];
 
+const TUTORIAL_SIGNALS = [
+  "tutorial",
+  "course",
+  "beginner",
+  "beginners",
+  "introduction",
+  "intro",
+  "guide",
+  "explained",
+  "walkthrough",
+  "lesson",
+  "full course",
+  "crash course",
+];
+
 interface ScoreBreakdown {
-  semantic: number;
-  keywords: number;
+  youtube: number;
   titleMatch: number;
+  keywords: number;
+  semantic: number;
   channelMatch: number;
-  efficiency: number;
-  transcript: number;
+  tutorialBonus: number;
   penalties: number;
   matchedKeywords: string[];
   missingKeywords: string[];
@@ -39,9 +49,10 @@ interface ScoreBreakdown {
 }
 
 function buildVideoText(candidate: VideoCandidate): string {
-  return [candidate.title, candidate.channelTitle, candidate.description, candidate.transcriptSample || ""]
+  return [candidate.title, candidate.channelTitle, candidate.description]
+    .filter(Boolean)
     .join(". ")
-    .slice(0, 12000);
+    .slice(0, 4000);
 }
 
 function keywordOverlapScore(
@@ -55,31 +66,33 @@ function keywordOverlapScore(
   const lower = text.toLowerCase();
   const matched = keywords.filter((kw) => lower.includes(kw));
   const missing = keywords.filter((kw) => !lower.includes(kw));
-  const score = matched.length / keywords.length;
-
-  return { score, matched, missing };
+  return { score: matched.length / keywords.length, matched, missing };
 }
 
-function titleRelevanceScore(title: string, topic: string, keywords: string[]): number {
+function titleRelevanceScore(title: string, topic: string): number {
   const titleLower = title.toLowerCase();
   const topicLower = topic.toLowerCase();
 
-  if (titleLower.includes(topicLower) && topicLower.length > 5) return 1;
+  if (titleLower.includes(topicLower) && topicLower.length > 4) return 1;
 
-  const topicWords = topicLower.split(/\s+/).filter((w) => w.length > 3);
+  const topicWords = topicLower.split(/\s+/).filter((w) => w.length > 2);
   if (topicWords.length === 0) return 0;
 
   const matched = topicWords.filter((w) => titleLower.includes(w));
   return matched.length / topicWords.length;
 }
 
-function efficiencyScore(durationSeconds: number, maxDurationMinutes?: number): number {
-  if (durationSeconds <= 0) return 0.5;
-  const idealMax = (maxDurationMinutes || 30) * 60;
-  if (durationSeconds <= idealMax * 0.5) return 1;
-  if (durationSeconds <= idealMax) return 0.85;
-  if (durationSeconds <= idealMax * 1.5) return 0.4;
-  return 0.1;
+function youtubeRankScore(rank: number | undefined): number {
+  if (rank === undefined) return 5;
+  // YouTube's top results dominate — mirrors native search relevance.
+  return Math.max(0, 50 - rank * 2.5);
+}
+
+function tutorialBonusScore(title: string, description: string, query: string): number {
+  const text = `${title} ${description} ${query}`.toLowerCase();
+  const queryWantsLearning = TUTORIAL_SIGNALS.some((s) => query.toLowerCase().includes(s));
+  if (!queryWantsLearning) return 0;
+  return TUTORIAL_SIGNALS.some((s) => text.includes(s)) ? 5 : 0;
 }
 
 function detectAvoidHits(text: string, avoid: string[]): string[] {
@@ -96,46 +109,30 @@ function scoreCandidate(
   intent: ParsedIntent,
   goal: LearningGoal,
   semanticSimilarity: number
-): ScoreBreakdown | null {
-  if (semanticSimilarity < MIN_SEMANTIC_SCORE) {
-    return null;
-  }
-
+): ScoreBreakdown {
   const videoText = buildVideoText(candidate);
-  const queryKeywords = extractKeywords(intent.topic || goal.query);
   const topic = intent.topic || goal.query;
+  const queryKeywords = extractKeywords(topic);
 
-  const mustCover = keywordOverlapScore(intent.mustCover, videoText);
-  const titleMatch = titleRelevanceScore(candidate.title, topic, queryKeywords);
-
-  // Require at least some keyword overlap for learning queries
-  if (intent.mustCover.length >= 2 && mustCover.matched.length === 0 && titleMatch < 0.3) {
-    return null;
-  }
-
+  const mustCover = keywordOverlapScore(intent.mustCover.length > 0 ? intent.mustCover : queryKeywords, videoText);
+  const titleMatch = titleRelevanceScore(candidate.title, topic);
   const avoidHits = detectAvoidHits(videoText, intent.avoid);
 
   let penalties = 0;
-  if (avoidHits.length > 0) penalties += 20;
-  if (detectClickbait(candidate.title)) penalties += 15;
-  if (!candidate.hasTranscript) penalties += 5;
+  if (avoidHits.length > 0) penalties += 12;
+  if (detectClickbait(candidate.title)) penalties += 8;
+  if (candidate.durationSeconds > 0 && candidate.durationSeconds < 45) penalties += 15;
 
   const channelMatch =
-    intent.channelHint && channelNameMatches(candidate.channelTitle, intent.channelHint) ? 15 : 0;
-
-  const semantic = Math.max(0, semanticSimilarity) * 45;
-  const keywords = mustCover.score * 25;
-  const title = titleMatch * 15;
-  const efficiency = efficiencyScore(candidate.durationSeconds, goal.maxDurationMinutes) * 10;
-  const transcript = candidate.hasTranscript ? 5 : 0;
+    intent.channelHint && channelNameMatches(candidate.channelTitle, intent.channelHint) ? 10 : 0;
 
   return {
-    semantic,
-    keywords,
-    titleMatch: title,
+    youtube: youtubeRankScore(candidate.youtubeRank),
+    titleMatch: titleMatch * 20,
+    keywords: mustCover.score * 15,
+    semantic: Math.max(0, semanticSimilarity) * 10,
     channelMatch,
-    efficiency,
-    transcript,
+    tutorialBonus: tutorialBonusScore(candidate.title, candidate.description, goal.query),
     penalties,
     matchedKeywords: mustCover.matched,
     missingKeywords: mustCover.missing.slice(0, 5),
@@ -151,10 +148,14 @@ function buildExplanation(
 ): { whyThisVideo: string; tradeoffs: string } {
   const parts: string[] = [];
 
-  parts.push(`Strong match (${Math.round(totalScore)}/100) for your query.`);
+  if ((candidate.youtubeRank ?? 99) <= 2) {
+    parts.push("Top YouTube result for your search.");
+  } else {
+    parts.push(`Strong match (${Math.round(totalScore)}/100) for your query.`);
+  }
 
-  if (breakdown.titleMatch >= 0.7) {
-    parts.push("Title directly addresses your topic.");
+  if (breakdown.titleMatch >= 14) {
+    parts.push("Title directly matches what you searched.");
   }
 
   if (breakdown.matchedKeywords.length > 0) {
@@ -162,32 +163,42 @@ function buildExplanation(
   }
 
   if (breakdown.channelMatch > 0 && intent.channelHint) {
-    parts.push(`From the channel you asked for (${intent.channelHint}).`);
-  }
-
-  if (candidate.hasTranscript) {
-    parts.push("Transcript verified for content relevance.");
+    parts.push(`From ${intent.channelHint}.`);
   }
 
   const tradeoffs: string[] = [];
-
-  if (!candidate.hasTranscript) {
-    tradeoffs.push("No transcript — ranked from title and description.");
-  }
-
   if (breakdown.missingKeywords.length > 0) {
-    tradeoffs.push(`May not cover: ${breakdown.missingKeywords.slice(0, 3).join(", ")}.`);
+    tradeoffs.push(`May not mention: ${breakdown.missingKeywords.slice(0, 3).join(", ")}.`);
   }
-
   if (breakdown.avoidHits.length > 0) {
-    tradeoffs.push(`Possible off-topic content detected.`);
+    tradeoffs.push("Possible off-topic signals in title/description.");
   }
-
   if (tradeoffs.length === 0) {
-    tradeoffs.push("Best match found for your query.");
+    tradeoffs.push("Best match from YouTube search for your query.");
   }
 
   return { whyThisVideo: parts.join(" "), tradeoffs: tradeoffs.join(" ") };
+}
+
+function toRankedResult(
+  candidate: VideoCandidate,
+  breakdown: ScoreBreakdown,
+  score: number,
+  intent: ParsedIntent
+): RankedResult {
+  const { whyThisVideo, tradeoffs } = buildExplanation(candidate, breakdown, score, intent);
+  return {
+    videoId: candidate.videoId,
+    score,
+    title: candidate.title,
+    channelTitle: candidate.channelTitle,
+    thumbnailUrl: candidate.thumbnailUrl,
+    durationSeconds: candidate.durationSeconds,
+    viewCount: candidate.viewCount,
+    whyThisVideo,
+    tradeoffs,
+    hasTranscript: false,
+  };
 }
 
 export async function rankVideos(
@@ -197,46 +208,70 @@ export async function rankVideos(
 ): Promise<RankedResult[]> {
   if (candidates.length === 0) return [];
 
+  const sortedByYoutube = [...candidates].sort(
+    (a, b) => (a.youtubeRank ?? 999) - (b.youtubeRank ?? 999)
+  );
+  const pool = sortedByYoutube.slice(0, 15);
+
   const intentText = buildIntentText(goal, intent);
-  const intentEmbedding = await embedText(intentText);
+  let intentEmbedding: number[] | null = null;
+  let videoEmbeddings: number[][] = [];
 
-  const scored: RankedResult[] = [];
-
-  for (const candidate of candidates) {
-    const videoText = buildVideoText(candidate);
-    const videoEmbedding = await embedText(videoText);
-    const similarity = cosineSimilarity(intentEmbedding, videoEmbedding);
-    const breakdown = scoreCandidate(candidate, intent, goal, similarity);
-
-    if (!breakdown) continue;
-
-    const rawScore =
-      breakdown.semantic +
-      breakdown.keywords +
-      breakdown.titleMatch +
-      breakdown.channelMatch +
-      breakdown.efficiency +
-      breakdown.transcript -
-      breakdown.penalties;
-
-    const score = Math.max(0, Math.min(100, Math.round(rawScore)));
-    if (score < MIN_FINAL_SCORE) continue;
-
-    const { whyThisVideo, tradeoffs } = buildExplanation(candidate, breakdown, score, intent);
-
-    scored.push({
-      videoId: candidate.videoId,
-      score,
-      title: candidate.title,
-      channelTitle: candidate.channelTitle,
-      thumbnailUrl: candidate.thumbnailUrl,
-      durationSeconds: candidate.durationSeconds,
-      viewCount: candidate.viewCount,
-      whyThisVideo,
-      tradeoffs,
-      hasTranscript: candidate.hasTranscript,
+  try {
+    intentEmbedding = await embedText(intentText, "query");
+    videoEmbeddings = await embedBatch(
+      pool.map((c) => buildVideoText(c)),
+      "document"
+    );
+  } catch {
+    // Fall back to pure YouTube order if model unavailable.
+    return pool.slice(0, 3).map((candidate, i) => {
+      const breakdown = scoreCandidate(candidate, intent, goal, 0);
+      const score = Math.max(70 - i * 5, 50);
+      return toRankedResult(candidate, breakdown, score, intent);
     });
   }
 
-  return scored.sort((a, b) => b.score - a.score).slice(0, 3);
+  const scored: RankedResult[] = [];
+
+  for (let i = 0; i < pool.length; i++) {
+    const candidate = pool[i];
+    const similarity = intentEmbedding
+      ? cosineSimilarity(intentEmbedding, videoEmbeddings[i])
+      : 0;
+    const breakdown = scoreCandidate(candidate, intent, goal, similarity);
+
+    const rawScore =
+      breakdown.youtube +
+      breakdown.titleMatch +
+      breakdown.keywords +
+      breakdown.semantic +
+      breakdown.channelMatch +
+      breakdown.tutorialBonus -
+      breakdown.penalties;
+
+    const score = Math.max(0, Math.min(100, Math.round(rawScore)));
+    scored.push(toRankedResult(candidate, breakdown, score, intent));
+  }
+
+  scored.sort((a, b) => b.score - a.score);
+
+  // Never overturn YouTube #1 unless our score says it's clearly worse.
+  const topYoutube = pool[0];
+  if (topYoutube && scored.length > 1) {
+    const youtubeTop = scored.find((r) => r.videoId === topYoutube.videoId);
+    const currentTop = scored[0];
+    if (youtubeTop && currentTop.videoId !== topYoutube.videoId) {
+      const gap = currentTop.score - youtubeTop.score;
+      if (gap < 8) {
+        scored.sort((a, b) => {
+          if (a.videoId === topYoutube.videoId) return -1;
+          if (b.videoId === topYoutube.videoId) return 1;
+          return b.score - a.score;
+        });
+      }
+    }
+  }
+
+  return scored.slice(0, 3);
 }

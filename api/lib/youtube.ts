@@ -80,86 +80,65 @@ export async function searchVideos(
   intent: ParsedIntent,
   maxDurationMinutes?: number
 ): Promise<VideoCandidate[]> {
-  const seen = new Map<string, VideoCandidate>();
+  const ordered: VideoCandidate[] = [];
+  const seen = new Set<string>();
   const maxDurationSeconds = maxDurationMinutes ? maxDurationMinutes * 60 : undefined;
 
-  for (const query of intent.searchQueries) {
+  for (let queryIndex = 0; queryIndex < intent.searchQueries.length; queryIndex++) {
+    const query = intent.searchQueries[queryIndex];
+    const isPrimary = queryIndex === 0;
+
     try {
       const results = await YouTube.search(query, {
-        limit: 15,
+        limit: 20,
         type: "video",
         safeSearch: false,
       });
 
-      for (const video of results) {
-        const candidate = videoToCandidate(video);
+      for (let position = 0; position < results.length; position++) {
+        const candidate = videoToCandidate(results[position]);
         if (!candidate || seen.has(candidate.videoId)) continue;
 
         if (candidate.durationSeconds > 0 && candidate.durationSeconds < 60) continue;
         if (maxDurationSeconds && candidate.durationSeconds > maxDurationSeconds) continue;
 
-        // If user asked for a specific channel, only keep matching videos
         if (intent.channelHint && !channelNameMatches(candidate.channelTitle, intent.channelHint)) {
           continue;
         }
 
-        seen.set(candidate.videoId, candidate);
+        seen.add(candidate.videoId);
+        ordered.push({
+          ...candidate,
+          youtubeRank: isPrimary ? position : 100 + position,
+        });
       }
     } catch (error) {
       console.error(`YouTube search failed for query "${query}":`, error);
     }
   }
 
-  // Fallback: broader search if channel filter was too strict
-  if (seen.size < 3 && intent.channelHint && intent.topic) {
+  if (ordered.length < 3 && intent.channelHint && intent.topic) {
     try {
       const fallback = await YouTube.search(intent.topic, {
         limit: 15,
         type: "video",
         safeSearch: false,
       });
-      for (const video of fallback) {
-        const candidate = videoToCandidate(video);
+      for (let position = 0; position < fallback.length; position++) {
+        const candidate = videoToCandidate(fallback[position]);
         if (!candidate || seen.has(candidate.videoId)) continue;
         if (candidate.durationSeconds > 0 && candidate.durationSeconds < 60) continue;
-        seen.set(candidate.videoId, candidate);
+        seen.add(candidate.videoId);
+        ordered.push({ ...candidate, youtubeRank: 200 + position });
       }
     } catch {
       // ignore fallback errors
     }
   }
 
-  const candidates = Array.from(seen.values()).slice(0, 30);
-
-  const enriched = await Promise.all(
-    candidates.map(async (candidate) => {
-      try {
-        const full = await YouTube.getVideo(
-          `https://www.youtube.com/watch?v=${candidate.videoId}`
-        );
-        if (!full) return candidate;
-
-        return {
-          ...candidate,
-          title: full.title || candidate.title,
-          description: full.description || candidate.description,
-          channelTitle: full.channel?.name || candidate.channelTitle,
-          channelId: full.channel?.id || candidate.channelId,
-          durationSeconds: parseDurationMs(full.duration) || candidate.durationSeconds,
-          viewCount: parseViews(full.views) || candidate.viewCount,
-          thumbnailUrl: full.thumbnail?.url || candidate.thumbnailUrl,
-        };
-      } catch {
-        return candidate;
-      }
-    })
-  );
-
-  return enriched.filter((video) => {
-    if (video.durationSeconds > 0 && video.durationSeconds < 60) return false;
-    if (maxDurationSeconds && video.durationSeconds > maxDurationSeconds) return false;
-    return true;
-  });
+  return ordered
+    .sort((a, b) => (a.youtubeRank ?? 999) - (b.youtubeRank ?? 999))
+    .slice(0, 20);
 }
 
 export async function getChannelVideos(

@@ -28,6 +28,8 @@ export interface VideoCandidate {
   thumbnailUrl: string;
   transcriptSample?: string;
   hasTranscript: boolean;
+  /** Position in YouTube search results (0 = top result). Lower is better. */
+  youtubeRank?: number;
 }
 
 export interface RankedResult {

@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import type { LearningGoal, SearchResponse } from "@shared/types";
 import { searchVideos, searchChannel } from "@/lib/youtube";
-import { enrichWithTranscripts } from "@/lib/transcripts";
 import { parseIntent } from "@/lib/intent";
 import { rankVideos } from "@/lib/ranker";
 import { checkRateLimit } from "@/lib/rate-limit";
@@ -86,9 +85,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { headers: corsHeaders });
     }
 
-    const allCandidates = await searchVideos(intent, goal.maxDurationMinutes);
-    const maxCandidates = process.env.NODE_ENV === "production" ? 12 : 30;
-    const candidates = allCandidates.slice(0, maxCandidates);
+    const candidates = await searchVideos(intent, goal.maxDurationMinutes);
 
     if (candidates.length === 0) {
       return NextResponse.json(
@@ -100,8 +97,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const enriched = await enrichWithTranscripts(candidates);
-    const results = await rankVideos(goal, intent, enriched);
+    const results = await rankVideos(goal, intent, candidates);
 
     if (results.length === 0) {
       return NextResponse.json(

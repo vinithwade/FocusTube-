@@ -9,6 +9,6 @@ services:
       - key: NODE_ENV
         value: production
       - key: EMBEDDING_MODEL
-        value: Xenova/all-MiniLM-L6-v2
+        value: Xenova/bge-small-en-v1.5
       - key: NODE_OPTIONS
         value: --max-old-space-size=460
