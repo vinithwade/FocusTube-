@@ -97,7 +97,30 @@ async function searchApi(path, options = {}) {
     headers: { "Content-Type": "application/json" },
     ...options,
   });
-  const data = await response.json();
+
+  const contentType = response.headers.get("content-type") || "";
+  const body = await response.text();
+
+  if (!contentType.includes("application/json")) {
+    if (response.status === 502 || response.status === 503) {
+      throw new Error(
+        "The API is waking up or restarting. Wait 30–60 seconds, then try again."
+      );
+    }
+    throw new Error(
+      "The API returned an unexpected response. Check that the Render service is running."
+    );
+  }
+
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    throw new Error(
+      "The API returned invalid data. It may still be starting — try again in a moment."
+    );
+  }
+
   if (!response.ok) {
     throw new Error(data.error || `API error (${response.status})`);
   }

@@ -86,7 +86,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(response, { headers: corsHeaders });
     }
 
-    const candidates = await searchVideos(intent, goal.maxDurationMinutes);
+    const allCandidates = await searchVideos(intent, goal.maxDurationMinutes);
+    const maxCandidates = process.env.NODE_ENV === "production" ? 12 : 30;
+    const candidates = allCandidates.slice(0, maxCandidates);
 
     if (candidates.length === 0) {
       return NextResponse.json(

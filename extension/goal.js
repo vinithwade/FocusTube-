@@ -125,7 +125,7 @@ form.addEventListener("submit", (e) => {
     return;
   }
 
-  showLoading("Finding the best match...");
+  showLoading("Finding the best match... (first search may take up to a minute)");
 
   chrome.runtime.sendMessage({ type: "SEARCH", payload }, (response) => {
     if (chrome.runtime.lastError) {

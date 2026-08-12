@@ -3,8 +3,12 @@ import { pipeline, type FeatureExtractionPipeline } from "@xenova/transformers";
 let embedder: FeatureExtractionPipeline | null = null;
 let embedderLoading: Promise<FeatureExtractionPipeline> | null = null;
 
-// Stronger model for better semantic matching (downloads ~420MB on first run)
-const MODEL_ID = "Xenova/all-mpnet-base-v2";
+// MiniLM fits Render free tier (~90MB). mpnet is better but needs ~420MB.
+const MODEL_ID =
+  process.env.EMBEDDING_MODEL ||
+  (process.env.NODE_ENV === "production"
+    ? "Xenova/all-MiniLM-L6-v2"
+    : "Xenova/all-mpnet-base-v2");
 
 async function getEmbedder(): Promise<FeatureExtractionPipeline> {
   if (embedder) return embedder;

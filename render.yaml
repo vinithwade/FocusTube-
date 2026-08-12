@@ -8,3 +8,7 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: EMBEDDING_MODEL
+        value: Xenova/all-MiniLM-L6-v2
+      - key: NODE_OPTIONS
+        value: --max-old-space-size=460
